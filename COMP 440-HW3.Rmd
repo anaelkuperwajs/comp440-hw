@@ -1,0 +1,243 @@
+---
+title: "COMP 440-HW3"
+author: "Anael Kuperwajs Cohen"
+date: "11/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(ggplot2)
+```
+
+
+## Setup
+
+Read the NRC lexicon into a data structure or dataframe.
+```{r}
+NRC_Lexicon <- read_tsv("/Users/anaelkuperwajs/COMP 440/NRC-emotion-lexicon-wordlevel-alphabetized-v0.92.txt", col_names = c('word', 'emotion'))
+```
+
+
+## Calculate emotions for one SubReddit
+
+Pick a subreddit and URL you'd like to test with from below. 
+Read in that subreddit text data.
+```{r}
+subreddit <- read.delim("http://shilad.com/reddit-112/AskWomen_large.txt", header = FALSE, col.names = c('text'))
+```
+
+After tokenizing, count the number of times each word appears (term frequencies).
+```{r}
+tidy_subreddit <- subreddit %>%
+  unnest_tokens(word, text)
+
+head(tidy_subreddit)
+nrow(tidy_subreddit)
+
+counts_subreddit <- tidy_subreddit %>%
+  count(word, sort = TRUE) 
+head(counts_subreddit)
+```
+
+Stop Words
+```{r}
+filtered_counts_subreddit <- tidy_subreddit %>%
+  anti_join(stop_words) %>%
+  count(word, sort=TRUE)
+
+head(filtered_counts_subreddit)
+```
+
+Calculate term frequency as a proportion of all tokens.
+```{r}
+subreddit_frequencies <- filtered_counts_subreddit %>%
+  mutate(tf = n / sum(n))
+head(subreddit_frequencies)
+```
+
+Print out the proportion of tokens that are each emotion in the subreddit. For each emotion, this will be the sum of the term frequencies (as proportions) for words that convey that emotion.
+```{r}
+subreddit_emotion <- left_join(subreddit_frequencies, NRC_Lexicon, by = 'word')
+head(subreddit_emotion)
+
+emotion_proportion <- subreddit_emotion %>% 
+  group_by(emotion) %>% 
+  summarise(sum_tf = sum(tf))
+emotion_proportion
+```
+
+Interpret your results. Do they reflect your intuition? Why or why not?
+
+The emotions that are the most present are anticipation, joy, and trust and the emotions that are the least present are surprise and disgust. This makes sense because I imagine this subreddit is a safe space for women. There is trust and support, and many of the responses are not surprising because women share many experiences in common. Of the two affects, negative and positive, positive is more present. This is not an inherently negative subreddit, so that intuitively makes sense.
+
+## Calculate emotions for all SubReddits
+Repeat the process above for all subreddits. If you are using Python (especially), it may be helpful to you to move the code above into a function you can use repeatedly. Even with R, this may make things easier for you.
+
+Create a dataframe using the results. Each subreddit should have a row. The columns should be (at least) the subreddit name, and the proportions for each emotion.
+
+```{r}
+emotion_function <- function (url) {
+  subreddit1 <- read.delim(url, header = FALSE, col.names = c('text'))
+  
+  subreddit2 <- subreddit1 %>%
+    unnest_tokens(word, text)
+  
+  subreddit3 <- subreddit2 %>%
+    anti_join(stop_words) %>%
+    count(word, sort=TRUE)
+  
+  subreddit4 <- subreddit3 %>%
+    mutate(tf = n / sum(n))
+  
+  subreddit5 <- left_join(subreddit4, NRC_Lexicon, by = 'word')
+  
+  subreddit6 <- subreddit5 %>% 
+    group_by(emotion) %>% 
+    summarise(sum_tf = sum(tf))
+  
+  return(subreddit6)
+}
+
+AdviceAnimals <- emotion_function('http://shilad.com/reddit-112/AdviceAnimals_large.txt')
+AskMen <- emotion_function('http://shilad.com/reddit-112/AskMen_large.txt')
+AskReddit <- emotion_function('http://shilad.com/reddit-112/AskReddit_large.txt')
+AskWomen <- emotion_function('http://shilad.com/reddit-112/AskWomen_large.txt')
+KotakuInAction <- emotion_function('http://shilad.com/reddit-112/KotakuInAction_large.txt')
+MMA <- emotion_function('http://shilad.com/reddit-112/MMA_large.txt')
+MensRights <- emotion_function('http://shilad.com/reddit-112/MensRights_large.txt')
+PurplePillDebate <- emotion_function('http://shilad.com/reddit-112/PurplePillDebate_large.txt')
+SquaredCircle <- emotion_function('http://shilad.com/reddit-112/SquaredCircle_large.txt')
+TheRedPill <- emotion_function('http://shilad.com/reddit-112/TheRedPill_large.txt')
+TrollXChromosomes <- emotion_function('http://shilad.com/reddit-112/TrollXChromosomes_large.txt')
+TumblrInAction <- emotion_function('http://shilad.com/reddit-112/TumblrInAction_large.txt')
+TwoXChromosomes <- emotion_function('http://shilad.com/reddit-112/TwoXChromosomes_large.txt')
+WTF <- emotion_function('http://shilad.com/reddit-112/WTF_large.txt')
+WritingPrompts <- emotion_function('http://shilad.com/reddit-112/WritingPrompts_large.txt')
+Anime <- emotion_function('http://shilad.com/reddit-112/anime_large.txt')
+Fo4 <- emotion_function('http://shilad.com/reddit-112/fo4_large.txt')
+Funny <- emotion_function('http://shilad.com/reddit-112/funny_large.txt')
+LeagueofLegends <- emotion_function('http://shilad.com/reddit-112/leagueoflegends_large.txt')
+Movies <- emotion_function('http://shilad.com/reddit-112/movies_large.txt')
+News <- emotion_function('http://shilad.com/reddit-112/news_large.txt')
+Pics <- emotion_function('http://shilad.com/reddit-112/pics_large.txt')
+Politics <- emotion_function('http://shilad.com/reddit-112/politics_large.txt')
+RaisedByNarcissists <- emotion_function('http://shilad.com/reddit-112/raisedbynarcissists_large.txt')
+RelationshipAdvice <- emotion_function('http://shilad.com/reddit-112/relationship_advice_large.txt')
+Relationships <- emotion_function('http://shilad.com/reddit-112/relationships_large.txt')
+Sex <- emotion_function('http://shilad.com/reddit-112/sex_large.txt')
+Tifu <- emotion_function('http://shilad.com/reddit-112/tifu_large.txt')
+TodayILearned <- emotion_function('http://shilad.com/reddit-112/todayilearned_large.txt')
+Videos <- emotion_function('http://shilad.com/reddit-112/videos_large.txt')
+WorldNews <- emotion_function('http://shilad.com/reddit-112/worldnews_large.txt')
+```
+
+```{r}
+#row names
+subreddit_labels <- c('AdviceAnimals', 'AskMen', 'AskReddit', 'AskWomen', 'KotakuInAction', 'MMA', 'MensRights', 'PurplePillDebate', 'SquaredCircle', 'TheRedPill', 'TrollXChromosomes', 'TumblrInAction', 'TwoXChromosomes', 'WTF', 'WritingPrompts', 'Anime', 'Fo4', 'Funny', 'LeagueofLegends', 'Movies', 'News', 'Pics', 'Politics', 'RaisedByNarcissists', 'RelationshipAdvice', 'Relationships', 'Sex', 'Tifu', 'TodayILearned', 'Videos', 'WorldNews')
+
+all_subreddits <- rbind(AdviceAnimals$sum_tf, AskMen$sum_tf, AskReddit$sum_tf, AskWomen$sum_tf, KotakuInAction$sum_tf, MMA$sum_tf, MensRights$sum_tf, PurplePillDebate$sum_tf, SquaredCircle$sum_tf, TheRedPill$sum_tf, TrollXChromosomes$sum_tf, TumblrInAction$sum_tf, TwoXChromosomes$sum_tf, WTF$sum_tf, WritingPrompts$sum_tf, Anime$sum_tf, Fo4$sum_tf, Funny$sum_tf, LeagueofLegends$sum_tf, Movies$sum_tf, News$sum_tf, Pics$sum_tf, Politics$sum_tf, RaisedByNarcissists$sum_tf, RelationshipAdvice$sum_tf, Relationships$sum_tf, Sex$sum_tf, Tifu$sum_tf, TodayILearned$sum_tf, Videos$sum_tf, WorldNews$sum_tf)
+
+all_subreddits_df <- data.frame(all_subreddits) %>% 
+  mutate(subreddit_labels) %>% 
+  mutate(anger=X1, anticipation=X2, disgust=X3, fear=X4, joy=X5, negative=X6, positive=X7, sadness=X8, surprise=X9, trust=X10, none=X11) %>% 
+  select(c(subreddit_labels, anger, anticipation, disgust, fear, joy, negative, positive, sadness, surprise, trust, none))
+all_subreddits_df
+```
+
+
+## Visualize the SubReddit Emotions
+Create two visualizations of the subreddit emotions.
+
+First, create a separate visualization for each emotion showing the results across all the subreddits. Highlight at least two emotions you find particularly particularly interesting and explain why they are interesting to you.
+```{r}
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=anger)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Anger Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=anticipation)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Anticipation Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=disgust)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Disgust Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=fear)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Fear Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=joy)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Joy Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=negative)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Negative Affect Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=positive)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Positive Affect Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=sadness)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Sadness Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=surprise)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Surprise Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+ggplot(all_subreddits_df, aes(x=subreddit_labels, y=trust)) +
+  geom_col() +
+  xlab('Subreddit') + 
+  ylab('Emotion Proportion') +
+  ggtitle("Proportion of Trust Across Various Subreddits") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+Two emotions that I find particularly interesting are anger and joy because the patterns of the bars seem to match up where subreddits that are high in anger are low in joy and vice versa. Furthermore, anger seems to be more prevalent in a few subreddits and then lower in the rest of the subreddits. With joy, the pattern is similar but not quite as extreme. A few subreddits stand out, but there are less that stand out than with anger. There is more variety with joy among the various subreddits.
+
+
+Second, select two emotions that are particularly interesting to you. Create a multi-variate visualization that shows the relationship between the emotions across subreddits. One straight-forward choice is a scatter plot with two different emotions on the X and Y axis and the points labeled with the subreddit name.
+```{r}
+ggplot(all_subreddits_df, aes(x=anger, y=joy)) +
+  geom_point() +
+  geom_text(aes(label = subreddit_labels)) +
+  xlab('Anger') + 
+  ylab('Joy') +
+  ggtitle("Comparison of Anger and Joy Across Various Subreddits")
+```
+
+

@@ -1,0 +1,408 @@
+---
+title: "COMP440-HW2"
+author: "Anael Kuperwajs Cohen"
+date: "11/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+## Part 1: Setup
+
+I would like you to answer the questions in your Colab notebook or RMarkdown. Please submit the HTML for the notebook or the URL for the Colab.
+Download the MovieLens 1M or 10M (10M may be tough to fit in memory!
+Load the dataset and describe each of the columns and the size of the dataset. How many users and items (movies) are there?
+Figure out how to translate from an item id in the ratings dataset to an item name.
+
+The ratings dataset has four columns, userId, movieId, rating, and tstamp. The column userId designates the ID of the user who submitted the rating. The column movieId is the numerical ID for the movie that is being rated. The rating is for the numerical value of the rating that movie is given from 1-5. The column tstamp is the timestamp of when the rating was submitted. This dataset has 1,000,209 submitted ratings.
+The movie dataset has three columns, movieId, title, and genre. The movieId is the same as in the ratings dataset, the title is the name of the movie that corresponds to that ID, and genre is the category of movie that it falls into. There 3,883 movies in the dataset.
+The number of total users that gave a rating is 6,040 and the number of movies that received a rating is 3,706.
+
+
+```{r}
+require(data.table)
+require(tidyr)
+
+read_ml_data <- function (url, column_names) {
+  df1 <- data.table::fread(url, sep = '', 
+                         data.table = FALSE, header = FALSE, encoding = 'Latin-1')
+  df2 <- tidyr::separate(df1, V1, into = column_names, sep = '\\:\\:', convert = TRUE)
+  
+  return (df2)
+}
+
+movies <- read_ml_data('https://raw.githubusercontent.com/srp98/Movie-Recommender-using-RBM/master/ml-1m/movies.dat', c('movieId', 'title', 'genre'))
+ratings <- read_ml_data('https://raw.githubusercontent.com/srp98/Movie-Recommender-using-RBM/master/ml-1m/ratings.dat', c('userId', 'movieId', 'rating', 'tstamp'))
+```
+
+```{r}
+ratings %>% head()
+movies %>% head()
+```
+
+```{r}
+dim(ratings)
+dim(movies)
+
+#number of users that submitted a rating
+count(ratings, vars=userId) %>% 
+  dim()
+
+#number of movies that received a rating
+count(ratings, vars=movieId) %>% 
+  dim()
+```
+
+
+```{r}
+#combining the two datasets
+new_ratings <- left_join(ratings, movies, by="movieId")
+new_ratings %>% 
+  head()
+```
+
+
+## Part 2: Basic Descriptive Analysis
+
+Visualize some basic information about the dataset and describe any interesting patterns you see:
+What is the overall mean rating? (no viz needed)
+How many times is each rating value used?
+How "sparse" is the ratings matrix? (no viz needed)
+What is the distribution of ratings per user?
+What is the distribution of ratings per item?
+
+One of the most interesting patterns I noticed is that the majority of both users and movies have very little ratings, while only a small amount have a large number of ratings. Most users don't submit a lot of ratings and most movies don't receive a lot of ratings. This matches with the sparsity of the ratings matrix, which is approximately 95.5%, so approximately 95.5% of the matrix is unfilled. The other interesting thing is that the average rating is about 3.58 and the most common rating is 4, followed by 3, which logically makes sense.
+
+```{r}
+#overall mean rating
+summarise(new_ratings, mean(rating))
+global_mean = mean(new_ratings$rating)
+
+#how many times is each rating value used
+ggplot(new_ratings, aes(x=rating)) +
+  geom_bar() +
+  xlab('Rating') + 
+  ylab('Count') +
+  ggtitle("Distribution of Ratings Overall")
+
+amount_user_ratings <- new_ratings %>% 
+  group_by(userId) %>% 
+  summarise(n=n())
+
+amount_movie_ratings <- new_ratings %>% 
+  group_by(movieId) %>% 
+  summarise(n=n())
+
+amount_user_ratings %>% 
+  head()
+amount_movie_ratings %>% 
+  head()
+
+#Sparsity
+sparsity_unfilled = ((3706*6040)-1000209)/(3706*6040)
+sparsity_unfilled
+
+#distributions
+ggplot(amount_user_ratings, aes(x=n)) +
+  geom_histogram() +
+  xlab('Number of Ratings a User Submitted') + 
+  ylab('Number of Users') +
+  ggtitle("Distribution of Ratings per User")
+
+ggplot(amount_movie_ratings, aes(x=n)) +
+  geom_histogram() +
+  xlab('Number of Ratings a Movie Received') + 
+  ylab('Number of Movies') +
+  ggtitle("Distribution of Ratings per Movie")
+```
+
+
+## Part 3: Finding Outliers
+
+Show the five most often rated and five most highly rated items in your dataset. Also show the five lowest rated items. Beware that you should use the "robust" mean methodology we outlined in class (and in the ML-100K activity) so that items with very few ratings are not overly favored.
+
+```{r}
+movie_ratings <- new_ratings %>% 
+  group_by(title, movieId) %>% 
+  summarise(n=n(), mean = mean(rating), rating_sum = sum(rating))
+
+#Most often rated
+movie_ratings %>% 
+  arrange(desc(n)) %>% 
+  head(5)
+
+smoothing_constant = 50
+
+smoothed_ratings <- movie_ratings %>% 
+  mutate(smoothed_mean = (rating_sum+(smoothing_constant*global_mean))/(n+smoothing_constant))
+smoothed_ratings %>% 
+  head()
+
+#Most highly rated items
+smoothed_ratings %>% 
+  arrange(desc(smoothed_mean)) %>% 
+  head(5)
+
+#Most lowly rated items
+smoothed_ratings %>% 
+  arrange(smoothed_mean) %>% 
+  head(5)
+```
+
+
+## Part 4: Normalizing Ratings
+
+Create a "normalized" rating:
+Calculate each user's average rating.
+Create a normalized rating2 that is each rating minus the user's average.
+Calculate each item's average for rating2 (not using original ratings!).
+Create a normalized rating3 that is each rating2 minus the item's average for rating2.
+
+```{r}
+#each user's average rating
+user_avg_ratings <- new_ratings %>% 
+  group_by(userId) %>% 
+  summarise(n=n(), user_avg_rating = mean(rating))
+user_avg_ratings %>% 
+  head()
+
+#including user avg ratings in the ratings dataframe
+rating2 <- left_join(new_ratings, user_avg_ratings, by="userId")
+
+#adding a normalized rating2
+rating2 <- rating2 %>% 
+  mutate(normalized_rating2 = rating - user_avg_rating)
+rating2 %>% 
+  head()
+
+#average normalized_rating2 for each item
+movie_avg_rating2 <- rating2 %>% 
+  group_by(movieId) %>% 
+  summarise(movie_avg_rating2 = mean(normalized_rating2))
+movie_avg_rating2 %>% 
+  head()
+
+#adding the average rating2 for each movie to the ratings dataframe
+rating3 <- left_join(rating2, movie_avg_rating2, by = "movieId")
+
+#calculating rating3
+rating3 <- rating3 %>% 
+  mutate(normalized_rating3 = normalized_rating2 - movie_avg_rating2)
+rating3 %>% 
+  arrange(desc(normalized_rating3)) %>% 
+  head()
+```
+
+
+## Part 5: Rating Overlap
+
+Select a reasonably controversial very popular item. We will call this "Movie A." Show how you picked the item. Calculate the 20 items most commonly co-rated with A. Look up the products. What do you observe? 
+
+Hints:
+Consider standard deviation as a measure of controversy.
+Choose a *very* popular Movie A (e.g. > 1000 ratings) so that you will have some movies that have been regularly co-rated with it.
+As a first step after you choose Movie A, consider creating a new dataset containing all ratings for every user who has rated Movie A.
+
+I chose Movie A to be "Star Wars: Episode I - The Phantom Menace (1999)" (movie ID = 2628) because it has 2,250 ratings, so it is very popular, and a standard deviation of approximately 1.126, which means it is a controversial movie.
+
+The first thing that I observe is that the first three highest co-rated movies with "Star Wars: Episode I - The Phantom Menace (1999)" are the other three Star Wars movies in the list. Almost all the movies after that are adventure, action, or sci-fi movies, such as "Men in Black", "Jurassic Park", and "Back to the Future". The last two in the top 20 are seemingly unrelated to Star Wars, "Princess Bride" and "The Silence of the Lambs", which are a fantasy movie and a horror movie, respectively. The one thing that does connect those two movies to Star Wars is that they are really well-known movies within their genres.
+
+```{r}
+#finding a controversial popular item
+popular_movies <- new_ratings %>% 
+  group_by(movieId, title) %>% 
+  summarise(n=n(), standard_deviation=sd(rating))
+
+popular_movies %>% 
+  arrange(desc(n)) %>% 
+  head()
+```
+
+```{r}
+#every rating of movie A
+movieA_ratings <- new_ratings %>% 
+  filter(movieId == 2628)
+movieA_ratings %>% 
+  head()
+
+#All ratings submitted by users who also rated movie A
+corated_movieA <- new_ratings %>% 
+  filter(userId %in% movieA_ratings$userId)
+corated_movieA %>% 
+  head()
+
+#finding how many ratings each co-rated movie has
+#The top 20 most commonly co-rated movies with movie A
+commonly_corated_movieA <- corated_movieA %>% 
+  group_by(movieId, title) %>% 
+  summarise(n=n())
+
+commonly_corated_movieA %>% 
+  arrange(desc(n)) %>% 
+  head(20)
+```
+
+
+## Part 6: Similarity 
+
+From the list above, choose a pair (A,B) items that you think will be positively correlated and another pair (A,C) that will be less positively correlated. Calculate the correlation between each pair using cosine similarity
+
+6.1 Description of similarity metric: 
+For a similarity score, we'll be using cosine similarity.  To calculate the cosine similarity between item A and B:
+1. Find all users who have rated both A and B.  Let's say we identify 100 users who have rated both items.
+2. Next, we create an array for each items of length 100.  The i'th entry of A's array will be the i'th user's rating for A.  Ditto for B.
+3. The cosine similarity is the dot product of the two vectors divided by (the product of the lengths of both vectors)
+
+6.2 Calculate similarities
+Calculate similarities:
+1. Find all users who rated both Movie A and Movie B. Get their ratings for each. You should have two vectors (or lists), one for each movie, where a column in A is a user's rating of A, and that same column in B is the user's rating for B. In other words, the columns across the two vectors "line up" to represent the same user.
+2. Compute the cosine similarities using the formulas above.
+3. Repeat the previous steps for Movie A and Movie C.
+
+Movies:
+A: Star Wars: Episode I - The Phantom Menace (1999), ID = 2628
+B: Star Wars: Episode IV - A New Hope (1977), ID = 260
+C: Princess Bride, The (1987), ID = 1197
+
+```{r}
+cosine <- function(x, y) { 
+    return (sum(x * y) / (sqrt(sum(x^2)) * sqrt(sum(y^2)))); 
+}
+```
+
+For movies A and B:
+```{r}
+#All the ratings of movie B by users who also rated movie A
+movieAB_ratings <- corated_movieA %>% 
+  filter(movieId == 260)
+
+#All the users who rated both movie A and B
+movieAB_users <- movieAB_ratings %>% 
+  select(userId)
+
+movieAB_ratings %>% 
+  head()
+movieAB_users %>% 
+  head()
+
+#Adding all the ratings for movie A for users who have rated both movie A and B
+movieAandB_user_ratings <- left_join(movieAB_users, movieA_ratings, by = 'userId')
+
+#Adding all the ratings for movie B for users who have rated both movie A and B
+movieAandB_user_ratings <- left_join(movieAandB_user_ratings, movieAB_ratings, by = 'userId',  suffix = c("_PhantomMenace", "_NewHope"))
+
+#getting rid of irrelevant columns
+movieAandB_user_ratings %>% 
+  select(c(userId, rating_PhantomMenace, rating_NewHope)) %>% 
+  head()
+```
+
+```{r}
+#calculating the cosine similarity
+cosineAB <- cosine(movieAandB_user_ratings$rating_PhantomMenace, movieAandB_user_ratings$rating_NewHope)
+cosineAB
+```
+
+For movies A and C:
+```{r}
+#All the ratings of movie C by users who also rated movie A
+movieAC_ratings <- corated_movieA %>% 
+  filter(movieId == 1197)
+
+#All the users who rated both movie A and C
+movieAC_users <- movieAC_ratings %>% 
+  select(userId)
+
+movieAC_ratings %>% 
+  head()
+movieAC_users %>% 
+  head()
+
+#Adding all the ratings for movie A for users who have rated both movie A and C
+movieAandC_user_ratings <- left_join(movieAC_users, movieA_ratings, by = 'userId')
+
+#Adding all the ratings for movie C for users who have rated both movie A and C
+movieAandC_user_ratings <- left_join(movieAandC_user_ratings, movieAC_ratings, by = 'userId', suffix = c("_PhantomMenace", "_PrincessBride"))
+
+#getting rid of irrelevant columns
+movieAandC_user_ratings %>% 
+  select(c(userId, rating_PhantomMenace, rating_PrincessBride)) %>% 
+  head()
+```
+
+```{r}
+#calculating the cosine similarity
+cosineAC <- cosine(movieAandC_user_ratings$rating_PhantomMenace, movieAandC_user_ratings$rating_PrincessBride)
+cosineAC
+```
+
+
+Answer the following questions:
+1. Which items did you select, and why?
+2. Do you have any intuition about the differences you observe in similarity?
+3. Try to understand the time complexity of your approach. You will not be able to calculate this in "closed form," but give the best explanation you can. You can reference u: the number of users, m: the number of items, n: the total number of ratings, and b: the number of users who have rated both A and B. Again, do your best here.
+
+I chose "Star Wars: Episode IV - A New Hope (1977)" as the movie that was going to be positively correlated with "Star Wars: Episode I - The Phantom Menace (1999)" and "Princess Bride, The (1987)" as the movie that will be less positively correlated. I chose the "A New Hope" because it is also a Star Wars movie and was highly ranked in the co-rated list. I chose "Princess Bride" because it is a very different type of movie and genre than Star Wars.
+
+Both pairs scored high in similarity, above .9, but the pairing with "A New Hope" scored slightly higher than "Princess Bride". That makes sense, due to the predictions I made earlier. I am slightly surprised the pairing with "Princess Bride" had such a high similarity because it does not seem to be a similar movie to any Star Wars movie. However, I can see that they would be ranked similarly because both movies are considered classics.
+
+The approach we just took had a lot of steps and goes through the dataset many times. First, we run through the entire dataset once to find all the instances where movie A is rated (n). Then we run through the dataset again to filter out all the individual ratings that came from a user that is also in the first filter (n\*u). With this new dataset for movie A, we run through the entire thing to filter for the second movie (n). Then we do two left joins that fully go through two datasets each (b\*a) and (b\*u). Finally, for the cosine similarity there are a few sums (n). Due to this, I don't think the time complexity is very good for this process and there is probably a faster way.
+
+## Extra Credit
+
+Simultaneously calculate similarities between A and all other items:
+Now that you've calculated similarities for pairs of items, consider how you can generalize the work you're doing to simultaneously calculate the similarities for all items (paired with A).
+You should only calculate correlations for items with some minimum threshold of co-ratings. Pick a threshold that seems reasonable to you.
+
+This does not work, but I made an attempt!
+
+```{r}
+#users and ratings for movie A
+movieA_ratings_users <- movieA_ratings %>% 
+  select(userId, rating)
+movieA_ratings_users %>% 
+  head()
+
+#List of movies to compare to
+#small range for testing
+commonly_corated_movieA_filter <- commonly_corated_movieA %>% 
+  filter(n>1630 && n<2250)
+commonly_corated_movieA_filter %>% 
+  head()
+
+#For each movie in the list
+for (movieID in commonly_corated_movieA_filter$movieId) {
+  
+  #corated_movieA is all the ratings made by users who also rated movie A
+  #list of users who rated both
+  both_users <- movieA_ratings_users %>% 
+    filter(userId %in% corated_movieA && corated_movieA$movieId == movieID)
+  
+  #ratings for movie
+  movie_ratings <- corated_movieA %>% 
+    filter(userId %in% both_users && movieId == movieID) %>% 
+    select(userId, rating)
+  
+  bothMovies <- left_join(both_users, movie_ratings, by = 'userId', suffix = c("_PhantomMenace", movieID))
+  bothMovies
+}
+```
+
+Answer the following questions at the top of your file:
+What was tricky about this step?
+For each rating type (rating, rating2, rating3) what were the top 10 items and their correlations?
+How do you explain the differences you see in the above three types?
+What surprised you in this result?
+What is the time complexity of your method in terms of u: the number of users, m: the number of items, n: the total number of ratings, and b: the number of users who have rated both A and B. Think carefully about which terms belong in the final time complexity.
+
+Other Extra Credit ideas:
+Instead of limiting your results to items with 1000 ratings, include all items but "smooth" so that rarely rated items receive discounted similarity scores.  Explain your method in comments.
+Use the MovieLens 10M dataset and pull in data about tags. Try to calculate the correlations between movies and tags in some way.
+
