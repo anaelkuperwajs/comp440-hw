@@ -1,0 +1,172 @@
+---
+title: "An Analysis of the Cooking Q&A on Stack Exchange"
+author: "Anael Kuperwajs Cohen"
+date: "11/4/2020"
+output: html_document
+---
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+## SQL Code
+
+These queries were run with the Cooking dataset.
+
+SELECT * FROM Users ORDER BY Reputation DESC;
+
+SELECT * FROM Posts;
+
+## Data Wrangling
+
+Importing data
+```{r}
+userReputation <- read.csv("/Users/anaelkuperwajs/Desktop/Senior Sem 1/User Reputation.csv")
+posts <- read.csv("/Users/anaelkuperwajs/Desktop/Senior Sem 1/Posts.csv")
+```
+
+Splitting posts into questions and answers
+```{r}
+posts_split <- split(posts, posts$PostTypeId)
+questions <- posts_split$'1'
+answers <- posts_split$'2'
+```
+
+Grouping data
+```{r}
+answers_count <- answers %>% 
+  group_by(OwnerUserId) %>% 
+  summarise(n = n())
+
+questions_count <- questions %>% 
+  group_by(OwnerUserId) %>% 
+  summarise(n = n())
+```
+
+Joining data
+```{r}
+userAndAnswers <- left_join(userReputation, answers_count, by = c("Id" = "OwnerUserId"), copy = FALSE, suffix = c("_user", "_answers"))
+questionsAndAnswers <- full_join(questions_count, answers_count, by = "OwnerUserId", copy = FALSE, suffix = c("_questions", "_answers"))
+```
+
+Replacing NA with 0
+```{r}
+userAndAnswers["n"][is.na(userAndAnswers["n"])] <- 0
+questionsAndAnswers[c("n_questions", "n_answers")][is.na(questionsAndAnswers[c("n_questions", "n_answers")])] <- 0
+```
+
+
+## Relationships
+
+### Relationship 1: user reputation and answers
+
+User's Reputation:
+The user's reputation is an integer that represents how much the community trusts that specific user. Posting good questions and useful answers causes viewers to respond positively and therefore increases reputation. As seen below, a majority of user's have a low reputation.
+```{r}
+ggplot(userReputation, aes(x = Reputation)) +
+  geom_histogram() +
+  scale_x_log10() +
+  labs(x="Reputation (log scale)", y="Count") +
+  ggtitle("The Distribution of Reputations Among Users")
+```
+
+
+Answers:
+Answers are a specific type of post that users can make. These are in response to a question another user posted and an attempt to provide an explanation for the source of confusion.
+```{r}
+ggplot(answers_count, aes(x = n)) +
+  geom_histogram() +
+  scale_x_log10() +
+  xlab("Amount of Answers Posted (log scale)") +
+  ylab("Number of Users") +
+  ggtitle("The Distribution of Answers Posted Per User")
+```
+
+
+Multivariate Visualization:
+As seen below, the relationship between reputation and amount of answers if fairly linear, so the more answers the higher the reputation. This makes sense in regards to the explanation above about reputation and how it is earned. It is earned by making posts the rest of the community appreciates.
+```{r}
+ggplot(userAndAnswers, aes(x = Reputation, y = n)) +
+  geom_point() +
+  xlab('Reputation') + 
+  ylab('Number of Answers Posted') +
+  ggtitle("The Relationship Between a User's Reputation and the Amount of Answers They've Posted")
+```
+
+Outliers:
+```{r}
+userAndAnswers <- userAndAnswers %>% 
+  mutate(URL_Id = paste0("https://cooking.stackexchange.com/users/", Id))
+
+userOutliers <- userAndAnswers %>% 
+  filter(Reputation > 25000 | n > 250)
+userOutliers %>% 
+  arrange(desc(Reputation))
+```
+
+The outliers in this relationship are the users who have a very high reputation. The top three are rumtscho, SAJ14SAJ, and Joe. When looking at their profiles, I saw a couple similarities. To begin with, they are all ranked high in percent overall. They all rank in the top 1% of users overall. They all have lots of posts overall, but always more answers than questions. Their posts have reached millions of people, near 20 million people for each user. As a result they also all have lots of badges as well. All the outliers have also been users for a very long time, close to 10 years. For the person with the highest reputation, they are also a moderator.
+
+## Relationship 2: answers and questions
+
+Questions:
+Questions are a specific type of post that users can make when they are confused about something and believe the community can help.
+```{r}
+ggplot(questions_count, aes(x = n)) +
+  geom_histogram() +
+  scale_x_log10() +
+  xlab("Amount of Questions Posted (log scale)") +
+  ggtitle("The Distribution of Questions Posted Per User")
+```
+
+
+Answers:
+Answers are a specific type of post that users can make. These are in response to a question another user posted and an attempt to provide an explanation for the source of confusion.
+```{r}
+ggplot(answers_count, aes(x = n)) +
+  geom_histogram() +
+  scale_x_log10() +
+  xlab("Amount of Answers Posted (log scale)") +
+  ylab("Number of Users") +
+  ggtitle("The Distribution of Answers Posted Per User")
+```
+
+
+Multivariate Visualization:
+Most users do not post a lot, but when they do it is often either questions or answers. When users don't post often, they post both questions and answers.
+```{r}
+ggplot(questionsAndAnswers, aes(x = n_questions, y = n_answers)) +
+  geom_point() +
+  xlab('Number of Questions Posted') + 
+  ylab('Number of Answers Posted') +
+  ggtitle("An Analysis of the Type of Posts User's Make")
+```
+
+Outliers:
+```{r}
+questionsAndAnswers <- questionsAndAnswers %>% 
+  mutate(URL_Id = paste0("https://cooking.stackexchange.com/users/", OwnerUserId))
+
+qaOutliers <- questionsAndAnswers %>% 
+  filter(n_questions > 50 | n_answers > 250)
+
+qaOutliers %>%
+  arrange(desc(n_questions, n_answers))
+qaOutliers %>%
+  arrange(desc(n_answers, n_questions))
+```
+
+There is one user who does not have an ID, so I did not include that user in my research. The top three outliers for highest number of questions asked are James Wilson, Aquarius_Girl, and AttilaNYC. Similarly to the outliers with high reputations, the outliers who ask the most questions are users for a long time, have lots of badges, and are in the top for percent overall (between top 0-5%). They all reach many people, but not quite to the same extent that the users with a high reputation do. What's unique about these outliers is that they have a moderate amount of posts, around 100, but mostly questions. These users rarely answer any questions. Furthermore, they all have at least one famous question. When looking at the outliers with the most answers, the top 3 users are the same as the top three for reputation, showing how correlated reputation and amount of answers are!
+
+
+## Everything else
+
+There was one of the four possible variables that I did not include in this homework assignment. I originally downloaded the csv for comments from the cooking dataset, but I did not end up using it in my final analyses. The reason for that is I found the relationships relating to questions and answers to be the most interesting. The connections I could make to the user revealed more about the user. Another piece I did not find as interesting was looking at the datasets that resulted from the splits without tallying up the number of answers and questions each user had. Making visualizations from those datasets before they were fully edited and finalized did not result in many exciting conclusions.
+
+I was particularly interested in the results from the questions and answers relationship analysis. This was a hypothesis I had from the beginning that ended up being mostly true. This was also the most challenging part, because it involved splits, joins, and converting NA values to zero in some columns. This allowed me to broaden my understanding of various R code.
